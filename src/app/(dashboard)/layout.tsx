@@ -17,6 +17,15 @@ export default async function DashboardLayout({
 
   const userId = session.user.id as string;
 
+  // Verify that the user exists in the database (handles wiped db sessions)
+  const userExists = await db.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!userExists) {
+    redirect('/login');
+  }
+
   // Fetch user profile and preferences from database
   let profile = await db.profile.findUnique({
     where: { userId },

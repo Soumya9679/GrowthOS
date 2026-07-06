@@ -199,3 +199,9 @@ body {
   color: hsl(var(--foreground));
   overflow-x: hidden;
 }
+
+/* Card Flip Utilities */
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}

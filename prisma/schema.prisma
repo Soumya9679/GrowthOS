@@ -160,11 +160,18 @@ model Goal {
   title       String
   description String?
   type        String
-  targetDate  DateTime
   progress    Int      @default(0) // 0 to 100
-  isCompleted Boolean  @default(false)
+  status      String   @default("ACTIVE") // "ACTIVE", "COMPLETED", "ABANDONED"
+  startDate   DateTime?
+  endDate     DateTime? // Target date of the goal
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  // Hierarchical relations
+  parentId    String?
+  parentGoal  Goal?    @relation("GoalHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  subGoals    Goal[]   @relation("GoalHierarchy")
+
   tags        Tag[]
 }
 
