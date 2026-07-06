@@ -178,3 +178,154 @@ export async function toggleHabit(habitId: string, dateStr: string) {
     return { error: 'Transaction failed.' };
   }
 }
+
+export async function createHabit(name: string, description?: string | null, frequency = 'DAILY') {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const habit = await db.habit.create({
+      data: {
+        userId,
+        name,
+        description: description || null,
+        frequency,
+      },
+    });
+
+    revalidatePath('/habits');
+    revalidatePath('/dashboard');
+    return { success: true, habit };
+  } catch (err) {
+    console.error('❌ Failed to create habit:', err);
+    return { error: 'Database transaction failed.' };
+  }
+}
+
+export async function updateHabit(habitId: string, name: string, description?: string | null, frequency = 'DAILY') {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const existing = await db.habit.findFirst({
+      where: { id: habitId, userId },
+    });
+
+    if (!existing) {
+      return { error: 'Habit not found.' };
+    }
+
+    const updated = await db.habit.update({
+      where: { id: habitId },
+      data: {
+        name,
+        description: description || null,
+        frequency,
+      },
+    });
+
+    revalidatePath('/habits');
+    revalidatePath('/dashboard');
+    return { success: true, habit: updated };
+  } catch (err) {
+    console.error('❌ Failed to update habit:', err);
+    return { error: 'Database transaction failed.' };
+  }
+}
+
+export async function deleteHabit(habitId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const existing = await db.habit.findFirst({
+      where: { id: habitId, userId },
+    });
+
+    if (!existing) {
+      return { error: 'Habit not found.' };
+    }
+
+    await db.habit.delete({
+      where: { id: habitId },
+    });
+
+    revalidatePath('/habits');
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (err) {
+    console.error('❌ Failed to delete habit:', err);
+    return { error: 'Database transaction failed.' };
+  }
+}
+
+export async function redeemStreakFreeze() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const profile = await db.profile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile) {
+      return { error: 'Profile not found.' };
+    }
+
+    if (profile.xp < 200) {
+      return { error: 'Insufficient XP. You need at least 200 XP to redeem a Streak Freeze.' };
+    }
+
+    const updatedXp = profile.xp - 200;
+    
+    // Recalculate level down if XP boundary crossed
+    let newLevel = profile.level;
+    let prevThreshold = calculateXpThreshold(newLevel - 1);
+    while (newLevel > 1 && updatedXp < prevThreshold) {
+      newLevel -= 1;
+      prevThreshold = calculateXpThreshold(newLevel - 1);
+    }
+
+    await db.profile.update({
+      where: { userId },
+      data: {
+        xp: updatedXp,
+        level: newLevel,
+        streakFreezes: profile.streakFreezes + 1,
+        title: newLevel >= 10 ? 'Elite Scholar' : newLevel >= 5 ? 'Growth Architect' : 'Novice',
+      },
+    });
+
+    // Log the transaction in XP history
+    await db.xPHistory.create({
+      data: {
+        userId,
+        amount: -200,
+        source: 'STREAK_FREEZE_REDEEM',
+      },
+    });
+
+    revalidatePath('/habits');
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (err) {
+    console.error('❌ Failed to redeem streak freeze:', err);
+    return { error: 'Database transaction failed.' };
+  }
+}
