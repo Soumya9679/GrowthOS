@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Code, RefreshCcw, Search, ExternalLink, Calendar, Code2, AlertCircle, CheckCircle2
@@ -30,13 +31,12 @@ interface DSADashboardProps {
 }
 
 export default function DSADashboard({ initialProfile, initialSubmissions }: DSADashboardProps) {
-  const [profile, setProfile] = useState<DSAProfile | null>(initialProfile);
-  const [submissions, setSubmissions] = useState<DSASubmission[]>(initialSubmissions);
+  const router = useRouter();
 
   // Form states
-  const [lcUser, setLcUser] = useState(profile?.leetcodeUsername || '');
-  const [cfUser, setCfUser] = useState(profile?.codeforcesUsername || '');
-  const [gfgUser, setGfgUser] = useState(profile?.geeksforgeeksUsername || '');
+  const [lcUser, setLcUser] = useState(initialProfile?.leetcodeUsername || '');
+  const [cfUser, setCfUser] = useState(initialProfile?.codeforcesUsername || '');
+  const [gfgUser, setGfgUser] = useState(initialProfile?.geeksforgeeksUsername || '');
 
   // Search filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,8 +60,8 @@ export default function DSADashboard({ initialProfile, initialSubmissions }: DSA
           origin: { y: 0.7 },
         });
 
-        // Simulating the API Sync by refreshing client arrays
-        window.location.reload();
+        alert(`Successfully synced ${res.count} new problems! Gained +${res.xp} XP.`);
+        router.refresh();
       } else if (res?.error) {
         alert(res.error);
       }
@@ -69,15 +69,15 @@ export default function DSADashboard({ initialProfile, initialSubmissions }: DSA
   };
 
   // Filtered submissions
-  const filteredSubmissions = submissions.filter((s) =>
+  const filteredSubmissions = initialSubmissions.filter((s) =>
     s.problemName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Submissions metrics counts
-  const totalCount = submissions.length;
-  const easyCount = submissions.filter((s) => s.difficulty.toLowerCase() === 'easy').length;
-  const mediumCount = submissions.filter((s) => s.difficulty.toLowerCase() === 'medium').length;
-  const hardCount = submissions.filter((s) => s.difficulty.toLowerCase() === 'hard').length;
+  const totalCount = initialSubmissions.length;
+  const easyCount = initialSubmissions.filter((s) => s.difficulty.toLowerCase() === 'easy').length;
+  const mediumCount = initialSubmissions.filter((s) => s.difficulty.toLowerCase() === 'medium').length;
+  const hardCount = initialSubmissions.filter((s) => s.difficulty.toLowerCase() === 'hard').length;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start text-left">
@@ -142,9 +142,9 @@ export default function DSADashboard({ initialProfile, initialSubmissions }: DSA
           </button>
         </form>
 
-        {profile?.lastSyncedAt && (
+        {initialProfile?.lastSyncedAt && (
           <div className="text-[10px] text-muted-foreground/80 uppercase font-semibold text-center border-t border-white/5 pt-4">
-            Last synced: {new Date(profile.lastSyncedAt).toLocaleString('en-US', {
+            Last synced: {new Date(initialProfile.lastSyncedAt).toLocaleString('en-US', {
               month: 'short',
               day: 'numeric',
               hour: '2-digit',
