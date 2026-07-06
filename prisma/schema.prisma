@@ -1,0 +1,569 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// AUTHENTICATION MODELS (Auth.js v5 standard)
+// ==========================================
+
+model User {
+  id              String            @id @default(cuid())
+  name            String?
+  email           String            @unique
+  emailVerified   DateTime?
+  image           String?
+  passwordHash    String?           // For local credentials sign-in
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  // Auth.js Relations
+  accounts        Account[]
+  sessions        Session[]
+  Authenticator   Authenticator[]
+
+  // GrowthOS Relations
+  profile         Profile?
+  preference      UserPreference?
+  widgetLayouts   WidgetLayout[]
+  goals           Goal[]
+  habits          Habit[]
+  tasks           Task[]
+  timeBlocks      TimeBlock[]
+  focusSessions   PomodoroSession[]
+  dsaProfile      DSAProfile?
+  dsaSubmissions  DSASubmission[]
+  subjects        Subject[]
+  books           Book[]
+  journalEntries  JournalEntry[]
+  unlockedBadges  UserBadge[]
+  xpLogs          XPHistory[]
+  leaderboardLogs LeaderboardMember[]
+  notifications   Notification[]
+  reminders       Reminder[]
+  activityLogs    ActivityLog[]
+  aiConversations AIConversation[]
+  projects        Project[]
+  workspaces      WorkspaceMember[]
+  exportHistory   ExportHistory[]
+  analytics       AnalyticsSnapshot[]
+  dailySummaries  DailySummary[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Authenticator {
+  credentialID         String  @unique
+  userId               String
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+}
+
+// ==========================================
+// USER SYSTEM & GAMIFICATION MODELS
+// ==========================================
+
+model Profile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xp            Int      @default(0)
+  level         Int      @default(1)
+  streak        Int      @default(0)
+  longestStreak Int      @default(0)
+  streakFreezes Int      @default(0)
+  lastActive    DateTime @default(now())
+  avatarUrl     String?
+  bio           String?
+  title         String   @default("Novice")
+}
+
+model UserPreference {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme                 String   @default("dark-default")
+  sidebarOpen           Boolean  @default(true)
+  notificationsEnabled  Boolean  @default(true)
+  pomodoroWorkDuration  Int      @default(25)
+  pomodoroBreakDuration Int      @default(5)
+  soundVolume           Int      @default(50)
+  weatherCity           String?
+}
+
+model WidgetLayout {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  widgetId    String
+  positionX   Int
+  positionY   Int
+  width       Int
+  height      Int
+  isCollapsed Boolean  @default(false)
+  
+  @@unique([userId, widgetId])
+}
+
+model Goal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  type        String
+  targetDate  DateTime
+  progress    Int      @default(0) // 0 to 100
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tags        Tag[]
+}
+
+/*
+enum GoalType {
+  LONG_TERM
+  MONTHLY
+  WEEKLY
+}
+*/
+
+// ==========================================
+// TASKS & DAILY PLANNER MODELS
+// ==========================================
+
+model Task {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      String  @default("TODO")
+  priority    String    @default("MEDIUM")
+  dueDate     DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  projectId   String?
+  project     Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  subtasks    SubTask[]
+  tags        Tag[]
+}
+
+/*
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+*/
+
+/*
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+*/
+
+model SubTask {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title       String
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model TimeBlock {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  startTime   DateTime
+  endTime     DateTime
+  color       String   @default("#6366f1")
+  notes       String?
+}
+
+// ==========================================
+// FOCUS (POMODORO) & HABITS MODELS
+// ==========================================
+
+model PomodoroSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  duration  Int      // in minutes
+  category  String   @default("Work")
+  createdAt DateTime @default(now())
+}
+
+model Habit {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  frequency   String     @default("DAILY")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  logs        HabitLog[]
+}
+
+model HabitLog {
+  id        String   @id @default(cuid())
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  date      DateTime // Normalized to YYYY-MM-DD 00:00:00
+  completed Boolean  @default(true)
+  
+  @@unique([habitId, date])
+}
+
+// ==========================================
+// LEARNING MODELS (DSA, STUDY, SPACED REP)
+// ==========================================
+
+model DSAProfile {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leetcodeUsername      String?
+  codeforcesUsername    String?
+  geeksforgeeksUsername String?
+  lastSyncedAt          DateTime?
+}
+
+model DSASubmission {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problemName String
+  platform    String
+  difficulty  String   // "Easy", "Medium", "Hard"
+  date        DateTime @default(now())
+  notes       String?
+}
+
+/*
+enum Platform {
+  LEETCODE
+  CODEFORCES
+  GEEKSFORGEEKS
+  OTHER
+}
+*/
+
+model Subject {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  color         String         @default("#3b82f6")
+  targetHours   Float          @default(0.0)
+  studySessions StudySession[]
+  topics        Topic[]
+}
+
+model Topic {
+  id          String      @id @default(cuid())
+  subjectId   String
+  subject     Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  name        String
+  flashcards  Flashcard[]
+}
+
+model StudySession {
+  id        String   @id @default(cuid())
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  duration  Int      // in minutes
+  createdAt DateTime @default(now())
+}
+
+model Flashcard {
+  id          String   @id @default(cuid())
+  topicId     String
+  topic       Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  front       String
+  back        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // SuperMemo-2 Spaced Repetition Parameters
+  interval    Int      @default(0)
+  ease        Float    @default(2.5)
+  repetitions Int      @default(0)
+  nextReview  DateTime @default(now())
+}
+
+model Book {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  author      String?
+  totalPages  Int
+  currentPage Int        @default(0)
+  status      String @default("WANT_TO_READ")
+  notes       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+/*
+enum BookStatus {
+  WANT_TO_READ
+  READING
+  COMPLETED
+}
+*/
+
+// ==========================================
+// SECOND BRAIN (JOURNAL & AUDITS)
+// ==========================================
+
+model JournalEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String   // Markdown
+  moodScore Int      @default(3) // 1 to 5
+  date      DateTime // Normalized YYYY-MM-DD
+  
+  @@unique([userId, date])
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  title       String      @unique
+  description String
+  iconUrl     String
+  xpReward    Int         @default(100)
+  users       UserBadge[]
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeId    String
+  badge      Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  unlockedAt DateTime @default(now())
+  
+  @@unique([userId, badgeId])
+}
+
+model XPHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Int
+  source    String   // e.g. "HABIT_COMPLETION", "POMODORO", "QUEST_DAILY"
+  createdAt DateTime @default(now())
+}
+
+model Leaderboard {
+  id         String              @id @default(cuid())
+  weekNumber Int
+  year       Int
+  members    LeaderboardMember[]
+  
+  @@unique([weekNumber, year])
+}
+
+model LeaderboardMember {
+  id                String      @id @default(cuid())
+  leaderboardId     String
+  leaderboard       Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pointsAccumulated Int         @default(0)
+  rank              Int?
+  
+  @@unique([leaderboardId, userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Reminder {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  triggerTime DateTime
+  cronPattern String?
+  sent        Boolean  @default(false)
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  details   String?  // JSON
+  createdAt DateTime @default(now())
+}
+
+// ==========================================
+// AI & ADVANCED PROJECT MODELS
+// ==========================================
+
+model AIConversation {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String      @default("Coaching Session")
+  messages  AIMessage[]
+  createdAt DateTime    @default(now())
+}
+
+model AIMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String         // "USER" or "AI"
+  content        String
+  createdAt      DateTime       @default(now())
+}
+
+model Project {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  tasks       Task[]
+  resources   Resource[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Resource {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  url       String
+  createdAt DateTime @default(now())
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  goals Goal[]
+  tasks Task[]
+}
+
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  inviteCode  String            @unique
+  members     WorkspaceMember[]
+  createdAt   DateTime          @default(now())
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        String    @default("MEMBER") // ADMIN, MEMBER
+  joinedAt    DateTime  @default(now())
+  
+  @@unique([workspaceId, userId])
+}
+
+model ExportHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  format    String   // "JSON", "CSV", "ZIP"
+  createdAt DateTime @default(now())
+}
+
+model AnalyticsSnapshot {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date               DateTime
+  tasksCompleted     Int      @default(0)
+  focusMinutes       Int      @default(0)
+  habitsCompleted    Int      @default(0)
+  spacedCardsChecked Int      @default(0)
+  overallFocusScore  Float    @default(0.0)
+  burnoutRisk        Float    @default(0.0)
+  learningVelocity   Float    @default(0.0)
+}
+
+model DailySummary {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  content   String   // AI generated summary text
+  score     Int      @default(100)
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, date])
+}
