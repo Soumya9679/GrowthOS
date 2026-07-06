@@ -26,6 +26,12 @@ export default async function DSAPage() {
         leetcodeUsername: profile.leetcodeUsername || '',
         codeforcesUsername: profile.codeforcesUsername || '',
         geeksforgeeksUsername: profile.geeksforgeeksUsername || '',
+        leetcodeSolved: profile.leetcodeSolved,
+        leetcodeEasy: profile.leetcodeEasy,
+        leetcodeMedium: profile.leetcodeMedium,
+        leetcodeHard: profile.leetcodeHard,
+        codeforcesSolved: profile.codeforcesSolved,
+        geeksforgeeksSolved: profile.geeksforgeeksSolved,
         lastSyncedAt: profile.lastSyncedAt ? profile.lastSyncedAt.toISOString() : null,
       }
     : null;
@@ -52,7 +58,6 @@ export default async function DSAPage() {
 
       <DSADashboard
         initialProfile={serializedProfile}
-        initialSubmissions={serializedSubmissions}
       />
     </div>
   );

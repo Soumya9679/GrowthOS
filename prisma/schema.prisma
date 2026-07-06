@@ -288,6 +288,12 @@ model DSAProfile {
   leetcodeUsername      String?
   codeforcesUsername    String?
   geeksforgeeksUsername String?
+  leetcodeSolved        Int       @default(0)
+  leetcodeEasy          Int       @default(0)
+  leetcodeMedium        Int       @default(0)
+  leetcodeHard          Int       @default(0)
+  codeforcesSolved      Int       @default(0)
+  geeksforgeeksSolved   Int       @default(0)
   lastSyncedAt          DateTime?
 }
 
