@@ -25,26 +25,19 @@ if (target === 'sqlite') {
   // Change provider
   schema = schema.replace(/provider\s*=\s*"postgresql"/g, 'provider = "sqlite"');
 
-  // Change enum types inside models to String
-  schema = schema.replace(/(\s+type\s+)GoalType/g, '$1String');
-  schema = schema.replace(/(\s+status\s+)TaskStatus/g, '$1String');
-  schema = schema.replace(/(\s+priority\s+)Priority/g, '$1String');
-  schema = schema.replace(/(\s+status\s+)BookStatus/g, '$1String');
-  schema = schema.replace(/(\s+platform\s+)Platform/g, '$1String');
+  // Change model field types specifically (prevents collision)
+  schema = schema.replace(/type\s+GoalType/g, 'type        String');
+  schema = schema.replace(/status\s+GoalStatus\s+@default\(ACTIVE\)/g, 'status      String     @default("ACTIVE")');
+  schema = schema.replace(/status\s+TaskStatus\s+@default\(TODO\)/g, 'status      String     @default("TODO")');
+  schema = schema.replace(/priority\s+Priority\s+@default\(MEDIUM\)/g, 'priority    String     @default("MEDIUM")');
+  schema = schema.replace(/status\s+BookStatus\s+@default\(WANT_TO_READ\)/g, 'status      String     @default("WANT_TO_READ")');
 
-  // Change default enum values to quoted strings
-  schema = schema.replace(/@default\(TODO\)/g, '@default("TODO")');
-  schema = schema.replace(/@default\(MEDIUM\)/g, '@default("MEDIUM")');
-  schema = schema.replace(/@default\(WANT_TO_READ\)/g, '@default("WANT_TO_READ")');
-
-  // Comment out enum definitions
-  schema = schema.replace(/(enum\s+\w+\s+\{[\s\S]*?\})/g, '/*\n$1\n*/');
-
-  // Update .env file
-  env = env.replace(
-    /DATABASE_URL\s*=\s*".*"/g,
-    'DATABASE_URL="file:./dev.db"'
-  );
+  // Comment out enums in schema
+  schema = schema.replace(/(enum\s+GoalType\s+\{[\s\S]*?\})/g, '/*\n$1\n*/');
+  schema = schema.replace(/(enum\s+GoalStatus\s+\{[\s\S]*?\})/g, '/*\n$1\n*/');
+  schema = schema.replace(/(enum\s+TaskStatus\s+\{[\s\S]*?\})/g, '/*\n$1\n*/');
+  schema = schema.replace(/(enum\s+Priority\s+\{[\s\S]*?\})/g, '/*\n$1\n*/');
+  schema = schema.replace(/(enum\s+BookStatus\s+\{[\s\S]*?\})/g, '/*\n$1\n*/');
 
   console.log('✅ SQLite configurations prepared.');
 } else {
@@ -53,33 +46,22 @@ if (target === 'sqlite') {
   // Change provider
   schema = schema.replace(/provider\s*=\s*"sqlite"/g, 'provider = "postgresql"');
 
-  // Revert String types back to Enums
-  schema = schema.replace(/(\s+type\s+)String/g, '$1GoalType');
-  schema = schema.replace(/(\s+status\s+)String/g, '$1TaskStatus');
-  schema = schema.replace(/(\s+priority\s+)String/g, '$1Priority');
-  schema = schema.replace(/(\s+status\s+)String/g, '$1BookStatus');
-  schema = schema.replace(/(\s+platform\s+)String/g, '$1Platform');
+  // Revert model fields back to native Postgres Enums
+  schema = schema.replace(/type\s+String/g, 'type        GoalType');
+  schema = schema.replace(/status\s+String\s+@default\("ACTIVE"\)/g, 'status      GoalStatus @default(ACTIVE)');
+  schema = schema.replace(/status\s+String\s+@default\("TODO"\)/g, 'status      TaskStatus @default(TODO)');
+  schema = schema.replace(/priority\s+String\s+@default\("MEDIUM"\)/g, 'priority    Priority @default(MEDIUM)');
+  schema = schema.replace(/status\s+String\s+@default\("WANT_TO_READ"\)/g, 'status      BookStatus @default(WANT_TO_READ)');
 
-  // Revert quoted default values back to enum identifiers
-  schema = schema.replace(/@default\("TODO"\)/g, '@default(TODO)');
-  schema = schema.replace(/@default\("MEDIUM"\)/g, '@default(MEDIUM)');
-  schema = schema.replace(/@default\("WANT_TO_READ"\)/g, '@default(WANT_TO_READ)');
-
-  // Fix specific edge case mappings where String might be used elsewhere
-  // Since we replaced all of them, let's make sure things like 'frequency String' or 'content String' are not broke.
-  // Actually, we used targeted regex mapping like `\s+type\s+` which only matches the specific fields.
-  // Let's restore the commented out enums
-  schema = schema.replace(/\/\*\s*\n(enum\s+\w+\s+\{[\s\S]*?\})\s*\n\*\//g, '$1');
-
-  // Update .env file
-  env = env.replace(
-    /DATABASE_URL\s*=\s*".*"/g,
-    'DATABASE_URL="postgresql://postgres:postgrespassword@localhost:5432/growthos_db?schema=public"'
-  );
+  // Uncomment enums
+  schema = schema.replace(/\/\*\s*\n(enum\s+GoalType\s+\{[\s\S]*?\})\s*\n\*\//g, '$1');
+  schema = schema.replace(/\/\*\s*\n(enum\s+GoalStatus\s+\{[\s\S]*?\})\s*\n\*\//g, '$1');
+  schema = schema.replace(/\/\*\s*\n(enum\s+TaskStatus\s+\{[\s\S]*?\})\s*\n\*\//g, '$1');
+  schema = schema.replace(/\/\*\s*\n(enum\s+Priority\s+\{[\s\S]*?\})\s*\n\*\//g, '$1');
+  schema = schema.replace(/\/\*\s*\n(enum\s+BookStatus\s+\{[\s\S]*?\})\s*\n\*\//g, '$1');
 
   console.log('✅ PostgreSQL configurations prepared.');
 }
 
 fs.writeFileSync(schemaPath, schema, 'utf8');
-fs.writeFileSync(envPath, env, 'utf8');
 console.log('🎉 DB Switch completed successfully.');

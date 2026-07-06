@@ -1,5 +1,5 @@
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 generator client {
@@ -159,9 +159,9 @@ model Goal {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
   description String?
-  type        String
+  type        GoalType
   progress    Int      @default(0) // 0 to 100
-  status      String   @default("ACTIVE") // "ACTIVE", "COMPLETED", "ABANDONED"
+  status      GoalStatus @default(ACTIVE)
   startDate   DateTime?
   endDate     DateTime? // Target date of the goal
   createdAt   DateTime @default(now())
@@ -175,13 +175,17 @@ model Goal {
   tags        Tag[]
 }
 
-/*
 enum GoalType {
   LONG_TERM
   MONTHLY
   WEEKLY
 }
-*/
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
 
 // ==========================================
 // TASKS & DAILY PLANNER MODELS
@@ -193,8 +197,8 @@ model Task {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
   description String?
-  status      String  @default("TODO")
-  priority    String    @default("MEDIUM")
+  status      TaskStatus  @default(TODO)
+  priority    Priority    @default(MEDIUM)
   dueDate     DateTime?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -204,23 +208,19 @@ model Task {
   tags        Tag[]
 }
 
-/*
 enum TaskStatus {
   TODO
   IN_PROGRESS
   IN_REVIEW
   DONE
 }
-*/
 
-/*
 enum Priority {
   LOW
   MEDIUM
   HIGH
   URGENT
 }
-*/
 
 model SubTask {
   id          String   @id @default(cuid())
@@ -302,15 +302,6 @@ model DSASubmission {
   notes       String?
 }
 
-/*
-enum Platform {
-  LEETCODE
-  CODEFORCES
-  GEEKSFORGEEKS
-  OTHER
-}
-*/
-
 model Subject {
   id            String         @id @default(cuid())
   userId        String
@@ -362,19 +353,17 @@ model Book {
   author      String?
   totalPages  Int
   currentPage Int        @default(0)
-  status      String @default("WANT_TO_READ")
+  status      BookStatus @default(WANT_TO_READ)
   notes       String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 }
 
-/*
 enum BookStatus {
   WANT_TO_READ
   READING
   COMPLETED
 }
-*/
 
 // ==========================================
 // SECOND BRAIN (JOURNAL & AUDITS)
