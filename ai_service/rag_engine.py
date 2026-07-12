@@ -40,22 +40,31 @@ class HuggingFaceCloudEmbeddings(Embeddings):
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         payload = {"inputs": texts, "options": {"wait_for_model": True}}
-        try:
-            response = requests.post(HF_EMBEDDING_URL, headers=self.headers, json=payload, timeout=12)
-            if response.status_code == 200:
-                data = response.json()
-                arr = np.array(data)
-                # Handle 3D token matrices: mean pool along the sequence dimension (axis 1)
-                if len(arr.shape) == 3:
-                    return np.mean(arr, axis=1).tolist()
-                return data
-            else:
-                print(f"HF Inference API Error (status {response.status_code}): {response.text}")
-        except Exception as e:
-            print(f"Failed connecting to HF Inference endpoint: {e}")
+        
+        # Retry loop for network warmup / DNS resolution latency on Render
+        for attempt in range(3):
+            try:
+                response = requests.post(HF_EMBEDDING_URL, headers=self.headers, json=payload, timeout=12)
+                if response.status_code == 200:
+                    data = response.json()
+                    arr = np.array(data)
+                    # Handle 3D token matrices: mean pool along the sequence dimension (axis 1)
+                    if len(arr.shape) == 3:
+                        return np.mean(arr, axis=1).tolist()
+                    return data
+                else:
+                    print(f"HF Inference API (Attempt {attempt+1}/3) status {response.status_code}: {response.text}")
+            except Exception as e:
+                print(f"HF Inference endpoint connection attempt {attempt+1}/3 failed: {e}")
             
-        # Safe zero-vector fallback in case of local network blocks/offline mode
-        return [[0.0] * 384 for _ in texts]
+            # Brief backoff before next attempt
+            if attempt < 2:
+                time.sleep(1.5)
+            
+        # Safe non-zero fallback vector (Pinecone throws 400 error on all-zero vectors)
+        fallback_vec = [0.0] * 384
+        fallback_vec[0] = 1e-5
+        return [fallback_vec for _ in texts]
 
     def embed_query(self, text: str) -> list[float]:
         embeddings = self.embed_documents([text])
