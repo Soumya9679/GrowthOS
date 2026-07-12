@@ -5,6 +5,9 @@ import requests
 import numpy as np
 from dotenv import load_dotenv
 
+# Pinecone Imports
+from pinecone import Pinecone, ServerlessSpec
+
 # LangChain Imports
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -20,6 +23,8 @@ load_dotenv(dotenv_path=env_path)
 
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 HF_TOKEN = os.getenv("HF_API_TOKEN")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "growthos")
 
 HF_EMBEDDING_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
@@ -60,9 +65,32 @@ class RAGEngine:
     def __init__(self):
         print("Initializing LangChain RAG Engine...")
         self.chunks = []
-        self.embeddings = None
+        self.embeddings = HuggingFaceCloudEmbeddings()
         self.vector_store = None
+        self.pc = None
+        self.index = None
+        self.use_pinecone = False
         
+        # Connect to Pinecone if API Key is configured
+        if PINECONE_API_KEY:
+            try:
+                self.pc = Pinecone(api_key=PINECONE_API_KEY)
+                # Auto-initialize serverless index if missing
+                existing_indexes = [idx.name for idx in self.pc.list_indexes()]
+                if PINECONE_INDEX_NAME not in existing_indexes:
+                    print(f"Creating Pinecone Index '{PINECONE_INDEX_NAME}' (384 Dimensions)...")
+                    self.pc.create_index(
+                        name=PINECONE_INDEX_NAME,
+                        dimension=384,
+                        metric="cosine",
+                        spec=ServerlessSpec(cloud="aws", region="us-east-1")
+                    )
+                self.index = self.pc.Index(PINECONE_INDEX_NAME)
+                self.use_pinecone = True
+                print(f"Linked successfully to Pinecone Index: {PINECONE_INDEX_NAME}")
+            except Exception as e:
+                print(f"Pinecone startup failed, falling back to Local Vector Store: {e}")
+
         # Configure OpenRouter model through LangChain ChatOpenAI
         self.llm = ChatOpenAI(
             openai_api_key=OPENROUTER_KEY or "dummy_key",
@@ -94,41 +122,132 @@ class RAGEngine:
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
             self.chunks = text_splitter.split_documents(documents)
             
-            # 3. Load Custom HuggingFace Cloud Embeddings
-            self.embeddings = HuggingFaceCloudEmbeddings()
-            
-            # 4. Initialize LangChain Vector Store
-            self.vector_store = InMemoryVectorStore.from_documents(
-                self.chunks,
-                self.embeddings
-            )
-            print(f"Indexed {len(self.chunks)} document chunks using LangChain InMemoryVectorStore.")
+            # 3. Synchronize Global knowledge chunks to Pinecone or Local Store
+            if self.use_pinecone:
+                print("Synchronizing global knowledge base documents to Pinecone index...")
+                vectors_to_upsert = []
+                for i, doc in enumerate(self.chunks):
+                    source_file = os.path.basename(doc.metadata.get("source", "unknown_source.md"))
+                    vector = self.embeddings.embed_query(doc.page_content)
+                    
+                    # Idempotent global chunk ID
+                    chunk_id = f"global_chunk_{i}"
+                    vectors_to_upsert.append((
+                        chunk_id,
+                        vector,
+                        {
+                            "userId": "global",
+                            "category": "global",
+                            "content": doc.page_content,
+                            "source": source_file
+                        }
+                    ))
+                
+                # Perform batch upsert
+                if vectors_to_upsert:
+                    self.index.upsert(vectors=vectors_to_upsert)
+                print(f"Indexed {len(vectors_to_upsert)} global chunks in Pinecone.")
+            else:
+                # Local In-Memory Fallback Vector Store
+                self.vector_store = InMemoryVectorStore.from_documents(
+                    self.chunks,
+                    self.embeddings
+                )
+                print(f"Indexed {len(self.chunks)} document chunks using LangChain InMemoryVectorStore.")
         except Exception as e:
             print(f"Error during LangChain document ingestion: {e}")
-            # Dynamic fallback empty corpus index
-            self.embeddings = HuggingFaceCloudEmbeddings()
-            self.vector_store = InMemoryVectorStore(self.embeddings)
+            if not self.use_pinecone:
+                self.vector_store = InMemoryVectorStore(self.embeddings)
 
-    def retrieve(self, query: str, k: int = 3):
-        if not self.vector_store:
-            return []
+    def upsert_user_document(self, userId: str, docId: str, category: str, content: str):
+        """
+        Dynamically indexes or updates user-specific logs (notes, journals, tasks) in Pinecone.
+        """
+        if not self.use_pinecone:
+            print("Ignoring document upsert: Pinecone database is not configured.")
+            return False
 
         try:
-            # Query the LangChain VectorStore using similarity search
-            docs = self.vector_store.similarity_search(query, k=k)
-            
-            results = []
-            for doc in docs:
-                source_file = os.path.basename(doc.metadata.get("source", "unknown_source.md"))
-                results.append({
-                    "chunk": {
-                        "source": source_file,
-                        "section": source_file.replace(".md", "").replace("_", " ").title(),
-                        "content": doc.page_content
-                    },
-                    "score": 1.0 # Default matched indicators
-                })
-            return results
+            print(f"Upserting user vector for user '{userId}', category '{category}', ID '{docId}'...")
+            vector = self.embeddings.embed_query(content)
+            self.index.upsert(vectors=[(
+                docId,
+                vector,
+                {
+                    "userId": userId,
+                    "category": category,
+                    "content": content,
+                    "source": f"{category}_log.md"
+                }
+            )])
+            return True
+        except Exception as e:
+            print(f"Failed to upsert user document {docId} in Pinecone: {e}")
+            return False
+
+    def delete_user_document(self, docId: str):
+        """
+        Deletes a user-specific document from the Pinecone vector index.
+        """
+        if not self.use_pinecone:
+            return False
+
+        try:
+            print(f"Deleting user vector ID '{docId}' from Pinecone...")
+            self.index.delete(ids=[docId])
+            return True
+        except Exception as e:
+            print(f"Failed to delete document {docId} from Pinecone: {e}")
+            return False
+
+    def retrieve(self, query: str, userId: str = "global", k: int = 3):
+        try:
+            # 1. Retrieve using Pinecone Index (with userId metadata filtration)
+            if self.use_pinecone:
+                query_vector = self.embeddings.embed_query(query)
+                
+                # Multi-tenant search: retrieve global guides OR active user specific logs
+                meta_filter = {
+                    "userId": {"$in": ["global", userId]}
+                }
+                
+                response = self.index.query(
+                    vector=query_vector,
+                    top_k=k,
+                    include_metadata=True,
+                    filter=meta_filter
+                )
+                
+                results = []
+                for match in response.get("matches", []):
+                    metadata = match.get("metadata", {})
+                    results.append({
+                        "chunk": {
+                            "source": metadata.get("source", "unknown_source.md"),
+                            "section": metadata.get("category", "Context").title(),
+                            "content": metadata.get("content", "")
+                        },
+                        "score": float(match.get("score", 1.0))
+                    })
+                return results
+                
+            # 2. Retrieve using local InMemory Vector Store fallback
+            else:
+                if not self.vector_store:
+                    return []
+                docs = self.vector_store.similarity_search(query, k=k)
+                results = []
+                for doc in docs:
+                    source_file = os.path.basename(doc.metadata.get("source", "unknown_source.md"))
+                    results.append({
+                        "chunk": {
+                            "source": source_file,
+                            "section": source_file.replace(".md", "").replace("_", " ").title(),
+                            "content": doc.page_content
+                        },
+                        "score": 1.0
+                    })
+                return results
         except Exception as e:
             print(f"LangChain semantic retrieval failed: {e}")
             return []
@@ -205,7 +324,7 @@ class RAGEngine:
                 f"Looking at your stats, you have **{focus_mins} focus minutes** today. Let's optimize your schedules:\n\n"
                 f"*   **Focus Block Priority**: Spend your next 50-minute timeblock on **\"{lag_goal}\"** since it is currently your lowest-progress objective.\n"
                 f"*   **Cognitive Rest**: Make sure you take a 5-minute break for every 25 minutes of deep focus to prevent call-stack overhead in your brain.\n\n"
-                f"*(Note: Local fallback output. Check your OpenRouter key connections if you expected generative results.)*"
+                f"*(Note: Local fallback output. Check your OpenRouter/Pinecone key connections if you expected generative results.)*"
             )
         elif "habit" in q_lower or "streak" in q_lower or "consistency" in q_lower:
             return (
@@ -214,7 +333,7 @@ class RAGEngine:
                 f"You are holding a **{streak}-day streak**. Today you completed **{user_stats.get('habitsDone', 0)}/{user_stats.get('habitsTotal', 0)} habits**:\n\n"
                 f"*   **Habit Stacking**: Lock in your routine by performing your flashcard deck reviews right after checking your planner grids.\n"
                 f"*   **Streak Rescue**: If today gets busy, make sure to check off at least one atomic habit to protect your streak.\n\n"
-                f"*(Note: Local fallback output. Check your OpenRouter key connections if you expected generative results.)*"
+                f"*(Note: Local fallback output. Check your OpenRouter/Pinecone key connections if you expected generative results.)*"
             )
         elif "dsa" in q_lower or "code" in q_lower or "leetcode" in q_lower or "algorithm" in q_lower:
             return (
@@ -223,7 +342,7 @@ class RAGEngine:
                 f"You have **{user_stats.get('solvedDsaCount', 0)} problems** synced. Here is your algorithmic path:\n\n"
                 f"*   **DP tabulation**: When writing DP transitions, ensure you evaluate recursive call-stack overhead and attempt iterative tabulation with rolling space arrays.\n"
                 f"*   **Shortest Paths**: Remember BFS uses queues for unweighted graphs, while Dijkstra utilizes priority queues for weighted paths.\n\n"
-                f"*(Note: Local fallback output. Check your OpenRouter key connections if you expected generative results.)*"
+                f"*(Note: Local fallback output. Check your OpenRouter/Pinecone key connections if you expected generative results.)*"
             )
         else:
             return (
@@ -232,5 +351,5 @@ class RAGEngine:
                 f"Hello! I am your GrowthOS Coach. Here is your daily priority index:\n\n"
                 f"*   **OKR Target**: Direct focus to **\"{lag_goal}\"** to increase your level boundary.\n"
                 f"*   **Focus Block**: You have logged **{focus_mins} focus minutes** today. Maintain active recall testing during your spaced deck studies.\n\n"
-                f"*(Note: Local fallback output. Check your OpenRouter key connections if you expected generative results.)*"
+                f"*(Note: Local fallback output. Check your OpenRouter/Pinecone key connections if you expected generative results.)*"
             )

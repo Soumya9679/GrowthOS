@@ -58,6 +58,19 @@ export async function saveNoteContent(id: string, notesText: string, currentPage
       },
     });
 
+    // Dynamic Pinecone Vector Indexing
+    const pythonRagServiceUrl = process.env.PYTHON_RAG_SERVICE_URL || 'http://127.0.0.1:8000';
+    fetch(`${pythonRagServiceUrl}/api/index`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: session.user.id,
+        docId: id,
+        category: 'note',
+        content: `Note Title: ${existing.title}\nAuthor: ${existing.author || 'Unknown'}\nNotes Content:\n${notesText}`
+      })
+    }).catch(err => console.error('Failed to sync Note to Pinecone:', err));
+
     revalidatePath('/notes');
     return { success: true };
   } catch (err) {

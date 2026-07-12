@@ -46,13 +46,26 @@ export async function saveJournalEntry(formData: z.infer<typeof journalSchema>) 
           moodScore,
         },
       });
+
+      // Dynamic Pinecone Vector Indexing
+      const pythonRagServiceUrl = process.env.PYTHON_RAG_SERVICE_URL || 'http://127.0.0.1:8000';
+      fetch(`${pythonRagServiceUrl}/api/index`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          docId: existing.id,
+          category: 'journal',
+          content: `Journal entry for ${today.toDateString()}\nMood: ${moodScore}/5\nReflection:\n${content}`
+        })
+      }).catch(err => console.error('Failed to sync Journal to Pinecone:', err));
       
       revalidatePath('/journal');
       revalidatePath('/dashboard');
       return { success: true, updated: true };
     } else {
       // Create new entry for today
-      await db.journalEntry.create({
+      const newJournal = await db.journalEntry.create({
         data: {
           userId,
           content,
@@ -60,6 +73,19 @@ export async function saveJournalEntry(formData: z.infer<typeof journalSchema>) 
           date: today,
         },
       });
+
+      // Dynamic Pinecone Vector Indexing
+      const pythonRagServiceUrl = process.env.PYTHON_RAG_SERVICE_URL || 'http://127.0.0.1:8000';
+      fetch(`${pythonRagServiceUrl}/api/index`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          docId: newJournal.id,
+          category: 'journal',
+          content: `Journal entry for ${today.toDateString()}\nMood: ${moodScore}/5\nReflection:\n${content}`
+        })
+      }).catch(err => console.error('Failed to sync Journal to Pinecone:', err));
 
       // Award +30 XP for today's reflection log
       const profile = await db.profile.findUnique({ where: { userId } });

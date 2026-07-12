@@ -101,6 +101,7 @@ export async function sendCoachMessage(formData: z.infer<typeof messageSchema>) 
         body: JSON.stringify({
           query: content,
           user_stats,
+          userId,
         }),
       });
 

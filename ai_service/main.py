@@ -30,12 +30,23 @@ def startup_event():
 class QueryRequest(BaseModel):
     query: str
     user_stats: Dict[str, Any]
+    userId: str = "global"
+
+class IndexRequest(BaseModel):
+    userId: str
+    docId: str
+    category: str  # "note" | "journal" | "task" | "habit"
+    content: str
+
+class DeleteRequest(BaseModel):
+    docId: str
 
 @app.get("/api/health")
 def health_check():
     return {
         "status": "healthy",
         "engine_ready": rag_engine is not None,
+        "use_pinecone": rag_engine.use_pinecone if rag_engine else False,
         "knowledge_base_chunks": len(rag_engine.chunks) if rag_engine else 0
     }
 
@@ -43,14 +54,14 @@ def health_check():
 def query_rag(request: QueryRequest):
     global rag_engine
     if not rag_engine:
-        raise HTTPException(status_code=503, detail="RAG Engine is not initialized or downloading model.")
+        raise HTTPException(status_code=503, detail="RAG Engine is not initialized.")
 
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query text cannot be empty.")
 
     try:
-        # 1. Retrieve top 3 semantically relevant chunks
-        retrieved = rag_engine.retrieve(request.query, k=3)
+        # 1. Retrieve top 3 semantically relevant chunks (filtering by userId)
+        retrieved = rag_engine.retrieve(request.query, userId=request.userId, k=3)
         
         # 2. Generate RAG Response
         response_text = rag_engine.generate_rag_response(
@@ -75,6 +86,40 @@ def query_rag(request: QueryRequest):
     except Exception as e:
         print(f"Error during query execution: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/index")
+def index_document(request: IndexRequest):
+    global rag_engine
+    if not rag_engine:
+        raise HTTPException(status_code=503, detail="RAG Engine is not initialized.")
+
+    success = rag_engine.upsert_user_document(
+        userId=request.userId,
+        docId=request.docId,
+        category=request.category,
+        content=request.content
+    )
+
+    if not success:
+        if not rag_engine.use_pinecone:
+            raise HTTPException(status_code=400, detail="Pinecone vector database is not configured. Local fallback does not store user-specific logs.")
+        raise HTTPException(status_code=500, detail="Failed to index document in Pinecone.")
+
+    return {"status": "success", "indexed": True, "docId": request.docId}
+
+@app.post("/api/delete")
+def delete_document(request: DeleteRequest):
+    global rag_engine
+    if not rag_engine:
+        raise HTTPException(status_code=503, detail="RAG Engine is not initialized.")
+
+    success = rag_engine.delete_user_document(docId=request.docId)
+    if not success:
+        if not rag_engine.use_pinecone:
+            return {"status": "ignored", "reason": "Pinecone is not configured."}
+        raise HTTPException(status_code=500, detail="Failed to delete document from Pinecone.")
+
+    return {"status": "success", "deleted": True, "docId": request.docId}
 
 if __name__ == "__main__":
     import os
