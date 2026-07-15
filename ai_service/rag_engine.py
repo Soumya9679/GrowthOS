@@ -28,53 +28,73 @@ PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "growthos")
 
 HF_EMBEDDING_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
-class HuggingFaceCloudEmbeddings(Embeddings):
+class PineconeInferenceEmbeddings(Embeddings):
     """
-    Custom LangChain Embeddings connector that queries Hugging Face's 
+    Custom LangChain Embeddings connector that queries Pinecone's managed
     Inference API directly without needing local PyTorch or sentence-transformers downloads.
     """
-    def __init__(self):
-        self.headers = {}
-        if HF_TOKEN:
-            self.headers["Authorization"] = f"Bearer {HF_TOKEN}"
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key
+        self.pc = None
+        if api_key:
+            self.pc = Pinecone(api_key=api_key)
+        self.model = "llama-text-embed-v2"
+        self.dimension = 384
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        payload = {"inputs": texts, "options": {"wait_for_model": True}}
+        if not self.pc or not texts:
+            fallback_vec = [0.0] * self.dimension
+            fallback_vec[0] = 1e-5
+            return [fallback_vec for _ in texts]
         
-        # Retry loop for network warmup / DNS resolution latency on Render
-        for attempt in range(3):
-            try:
-                response = requests.post(HF_EMBEDDING_URL, headers=self.headers, json=payload, timeout=12)
-                if response.status_code == 200:
-                    data = response.json()
-                    arr = np.array(data)
-                    # Handle 3D token matrices: mean pool along the sequence dimension (axis 1)
-                    if len(arr.shape) == 3:
-                        return np.mean(arr, axis=1).tolist()
-                    return data
-                else:
-                    print(f"HF Inference API (Attempt {attempt+1}/3) status {response.status_code}: {response.text}")
-            except Exception as e:
-                print(f"HF Inference endpoint connection attempt {attempt+1}/3 failed: {e}")
-            
-            # Brief backoff before next attempt
-            if attempt < 2:
-                time.sleep(1.5)
-            
-        # Safe non-zero fallback vector (Pinecone throws 400 error on all-zero vectors)
-        fallback_vec = [0.0] * 384
-        fallback_vec[0] = 1e-5
-        return [fallback_vec for _ in texts]
+        try:
+            batch_size = 96
+            results = []
+            for i in range(0, len(texts), batch_size):
+                batch_texts = texts[i:i+batch_size]
+                response = self.pc.inference.embed(
+                    model=self.model,
+                    inputs=batch_texts,
+                    parameters={
+                        "input_type": "passage",
+                        "dimension": self.dimension
+                    }
+                )
+                results.extend([item.values for item in response.data])
+            return results
+        except Exception as e:
+            print(f"Pinecone Inference embed_documents failed: {e}")
+            fallback_vec = [0.0] * self.dimension
+            fallback_vec[0] = 1e-5
+            return [fallback_vec for _ in texts]
 
     def embed_query(self, text: str) -> list[float]:
-        embeddings = self.embed_documents([text])
-        return embeddings[0]
+        if not self.pc:
+            fallback_vec = [0.0] * self.dimension
+            fallback_vec[0] = 1e-5
+            return fallback_vec
+        
+        try:
+            response = self.pc.inference.embed(
+                model=self.model,
+                inputs=[text],
+                parameters={
+                    "input_type": "query",
+                    "dimension": self.dimension
+                }
+            )
+            return response.data[0].values
+        except Exception as e:
+            print(f"Pinecone Inference embed_query failed: {e}")
+            fallback_vec = [0.0] * self.dimension
+            fallback_vec[0] = 1e-5
+            return fallback_vec
 
 class RAGEngine:
     def __init__(self):
         print("Initializing LangChain RAG Engine...")
         self.chunks = []
-        self.embeddings = HuggingFaceCloudEmbeddings()
+        self.embeddings = PineconeInferenceEmbeddings(api_key=PINECONE_API_KEY)
         self.vector_store = None
         self.pc = None
         self.index = None
@@ -104,7 +124,8 @@ class RAGEngine:
         self.llm = ChatOpenAI(
             openai_api_key=OPENROUTER_KEY or "dummy_key",
             openai_api_base="https://openrouter.ai/api/v1",
-            model="tencent/hy3:free",
+            model="google/gemini-2.5-flash",
+            max_tokens=1000,
             default_headers={
                 "HTTP-Referer": "http://localhost:3000",
                 "X-Title": "GrowthOS"
@@ -134,10 +155,13 @@ class RAGEngine:
             # 3. Synchronize Global knowledge chunks to Pinecone or Local Store
             if self.use_pinecone:
                 print("Synchronizing global knowledge base documents to Pinecone index...")
+                texts = [doc.page_content for doc in self.chunks]
+                vectors = self.embeddings.embed_documents(texts)
+                
                 vectors_to_upsert = []
                 for i, doc in enumerate(self.chunks):
                     source_file = os.path.basename(doc.metadata.get("source", "unknown_source.md"))
-                    vector = self.embeddings.embed_query(doc.page_content)
+                    vector = vectors[i]
                     
                     # Idempotent global chunk ID
                     chunk_id = f"global_chunk_{i}"
