@@ -20,39 +20,41 @@ export default async function AnalyticsPage() {
     return d;
   };
 
-  // 1. Fetch Analytics snapshots
-  const snapshots = await db.analyticsSnapshot.findMany({
-    where: { userId },
-    orderBy: { date: 'asc' },
-  });
-
-  // 2. Fetch recent focus sessions
-  const focusSessions = await db.pomodoroSession.findMany({
-    where: {
-      userId,
-      createdAt: { gte: daysAgo(7) },
-    },
-  });
-
-  // 3. Fetch task completion stats
-  const completedTasksCount = await db.task.count({
-    where: { userId, status: 'DONE' },
-  });
-  const pendingTasksCount = await db.task.count({
-    where: { userId, NOT: { status: 'DONE' } },
-  });
-
-  // 4. Fetch habits count
-  const habitsCount = await db.habit.count({ where: { userId } });
-  const habitsLogCount = await db.habitLog.count({
-    where: {
-      habit: { userId },
-      date: { gte: daysAgo(7) },
-    },
-  });
-
-  // 5. Fetch DSA count
-  const dsaProblemsCount = await db.dSASubmission.count({ where: { userId } });
+  // Parallelize all analytics database reads
+  const [
+    snapshots,
+    focusSessions,
+    completedTasksCount,
+    pendingTasksCount,
+    habitsCount,
+    habitsLogCount,
+    dsaProblemsCount,
+  ] = await Promise.all([
+    db.analyticsSnapshot.findMany({
+      where: { userId },
+      orderBy: { date: 'asc' },
+    }),
+    db.pomodoroSession.findMany({
+      where: {
+        userId,
+        createdAt: { gte: daysAgo(7) },
+      },
+    }),
+    db.task.count({
+      where: { userId, status: 'DONE' },
+    }),
+    db.task.count({
+      where: { userId, NOT: { status: 'DONE' } },
+    }),
+    db.habit.count({ where: { userId } }),
+    db.habitLog.count({
+      where: {
+        habit: { userId },
+        date: { gte: daysAgo(7) },
+      },
+    }),
+    db.dSASubmission.count({ where: { userId } }),
+  ]);
 
   // 6. Compute weekly focus minutes by day
   const weeklyFocusData = Array.from({ length: 7 }).map((_, idx) => {

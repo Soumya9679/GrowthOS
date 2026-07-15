@@ -14,39 +14,40 @@ export default async function StudyPage() {
   const now = new Date();
 
   // Query subjects, nested topics, and nested cards
-  const subjects = await db.subject.findMany({
-    where: { userId },
-    include: {
-      topics: {
-        include: {
-          flashcards: true,
+  // Query subjects list and due cards in parallel
+  const [subjects, dueCards] = await Promise.all([
+    db.subject.findMany({
+      where: { userId },
+      include: {
+        topics: {
+          include: {
+            flashcards: true,
+          },
         },
       },
-    },
-    orderBy: { name: 'asc' },
-  });
-
-  // Query all cards that are currently due for review
-  const dueCards = await db.flashcard.findMany({
-    where: {
-      topic: {
-        subject: {
-          userId,
+      orderBy: { name: 'asc' },
+    }),
+    db.flashcard.findMany({
+      where: {
+        topic: {
+          subject: {
+            userId,
+          },
+        },
+        nextReview: {
+          lte: now,
         },
       },
-      nextReview: {
-        lte: now,
-      },
-    },
-    include: {
-      topic: {
-        include: {
-          subject: true,
+      include: {
+        topic: {
+          include: {
+            subject: true,
+          },
         },
       },
-    },
-    orderBy: { nextReview: 'asc' },
-  });
+      orderBy: { nextReview: 'asc' },
+    }),
+  ]);
 
   const serializedSubjects = subjects.map((s) => ({
     id: s.id,

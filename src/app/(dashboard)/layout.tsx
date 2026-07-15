@@ -19,23 +19,21 @@ export default async function DashboardLayout({
 
   const userId = session.user.id as string;
 
-  // Verify that the user exists in the database (handles wiped db sessions)
-  const userExists = await db.user.findUnique({
-    where: { id: userId },
-  });
+  // Verify user and fetch profile / preferences in parallel
+  const [userExists, profile, preference] = await Promise.all([
+    db.user.findUnique({ where: { id: userId } }),
+    db.profile.findUnique({ where: { userId } }),
+    db.userPreference.findUnique({ where: { userId } }),
+  ]);
 
   if (!userExists) {
     redirect('/login');
   }
 
-  // Fetch user profile and preferences from database
-  let profile = await db.profile.findUnique({
-    where: { userId },
-  });
-
   // Fallback profile creation in case of seeding anomalies
-  if (!profile) {
-    profile = await db.profile.create({
+  let activeProfile = profile;
+  if (!activeProfile) {
+    activeProfile = await db.profile.create({
       data: {
         userId,
         xp: 100,
@@ -45,19 +43,15 @@ export default async function DashboardLayout({
     });
   }
 
-  const preference = await db.userPreference.findUnique({
-    where: { userId },
-  });
-
   const sidebarOpen = preference ? preference.sidebarOpen : true;
 
   // Prepare profile details safely
   const profileDetails = {
     name: session.user.name || 'User',
-    avatarUrl: profile.avatarUrl,
-    level: profile.level,
-    xp: profile.xp,
-    title: profile.title,
+    avatarUrl: activeProfile.avatarUrl,
+    level: activeProfile.level,
+    xp: activeProfile.xp,
+    title: activeProfile.title,
   };
 
   return (

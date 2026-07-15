@@ -12,18 +12,19 @@ export default async function SettingsPage() {
 
   const userId = session.user.id;
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { name: true, email: true },
-  });
-
-  const profile = await db.profile.findUnique({
-    where: { userId },
-  });
-
-  const preference = await db.userPreference.findUnique({
-    where: { userId },
-  });
+  // Query user, profile, and preferences in parallel
+  const [user, profile, preference] = await Promise.all([
+    db.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    }),
+    db.profile.findUnique({
+      where: { userId },
+    }),
+    db.userPreference.findUnique({
+      where: { userId },
+    }),
+  ]);
 
   const serializedUser = user ? { name: user.name || '', email: user.email } : null;
   const serializedProfile = profile ? { bio: profile.bio || '', avatarUrl: profile.avatarUrl || '' } : null;

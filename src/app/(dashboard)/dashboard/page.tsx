@@ -20,123 +20,117 @@ export default async function DashboardPage() {
 
   const userId = session.user.id;
 
-  // 1. Fetch User Profile
-  const profile = await db.profile.findUnique({
-    where: { userId },
-  });
-
-  const preference = await db.userPreference.findUnique({
-    where: { userId },
-  });
-
-  // 2. Fetch Widget Layouts
-  const dbLayouts = await db.widgetLayout.findMany({
-    where: { userId },
-  });
-
-  // 3. Fetch Habits for Today
-  const habits = await db.habit.findMany({
-    where: { userId },
-    include: {
-      logs: {
-        where: {
-          date: {
-            gte: new Date(new Date().setHours(0,0,0,0)),
-          },
-        },
-      },
-    },
-  });
-
-  // 4. Fetch Timeblocks for Today
   const startOfToday = new Date();
   startOfToday.setHours(0,0,0,0);
   const endOfToday = new Date();
   endOfToday.setHours(23,59,59,999);
 
-  const timeBlocks = await db.timeBlock.findMany({
-    where: {
-      userId,
-      startTime: {
-        gte: startOfToday,
-        lte: endOfToday,
-      },
-    },
-  });
-
-  // 5. Fetch Key Stats
-  // Tasks completed vs total today
-  const tasks = await db.task.findMany({
-    where: { userId },
-  });
-
-  const tasksDoneCount = tasks.filter((t) => t.status === 'DONE').length;
-  const tasksTotalCount = tasks.length;
-
-  // Focus time today (Pomodoro minutes)
-  const pomodoroSessions = await db.pomodoroSession.findMany({
-    where: {
-      userId,
-      createdAt: {
-        gte: startOfToday,
-      },
-    },
-  });
-  const focusMinutesToday = pomodoroSessions.reduce((acc, curr) => acc + curr.duration, 0);
-
-  // XP Gained Today
-  const xpLogsToday = await db.xPHistory.findMany({
-    where: {
-      userId,
-      createdAt: {
-        gte: startOfToday,
-      },
-    },
-  });
-  const xpGainedToday = xpLogsToday.reduce((acc, curr) => acc + curr.amount, 0);
-
-  // Due flashcards count
-  const dueCardsCount = await db.flashcard.count({
-    where: {
-      topic: {
-        subject: {
-          userId,
-        },
-      },
-      nextReview: {
-        lte: new Date(),
-      },
-    },
-  });
-
-  // 6. Generate Heatmap Activity Log details (last 365 days)
   const oneYearAgo = new Date();
   oneYearAgo.setDate(oneYearAgo.getDate() - 365);
 
-  // Fetch habit logs in the past year
-  const habitLogs = await db.habitLog.findMany({
-    where: {
-      habit: { userId },
-      date: { gte: oneYearAgo },
-    },
-  });
+  // Parallelize all database reads
+  const [
+    profile,
+    preference,
+    dbLayouts,
+    habits,
+    timeBlocks,
+    tasksDoneCount,
+    tasksTotalCount,
+    pomodoroSessions,
+    xpLogsToday,
+    dueCardsCount,
+    habitLogs,
+    completedTasksLogs,
+    journalLogs,
+  ] = await Promise.all([
+    db.profile.findUnique({
+      where: { userId },
+    }),
+    db.userPreference.findUnique({
+      where: { userId },
+    }),
+    db.widgetLayout.findMany({
+      where: { userId },
+    }),
+    db.habit.findMany({
+      where: { userId },
+      include: {
+        logs: {
+          where: {
+            date: {
+              gte: startOfToday,
+            },
+          },
+        },
+      },
+    }),
+    db.timeBlock.findMany({
+      where: {
+        userId,
+        startTime: {
+          gte: startOfToday,
+          lte: endOfToday,
+        },
+      },
+    }),
+    db.task.count({
+      where: { userId, status: 'DONE' },
+    }),
+    db.task.count({
+      where: { userId },
+    }),
+    db.pomodoroSession.findMany({
+      where: {
+        userId,
+        createdAt: {
+          gte: startOfToday,
+        },
+      },
+    }),
+    db.xPHistory.findMany({
+      where: {
+        userId,
+        createdAt: {
+          gte: startOfToday,
+        },
+      },
+    }),
+    db.flashcard.count({
+      where: {
+        topic: {
+          subject: {
+            userId,
+          },
+        },
+        nextReview: {
+          lte: new Date(),
+        },
+      },
+    }),
+    db.habitLog.findMany({
+      where: {
+        habit: { userId },
+        date: { gte: oneYearAgo },
+      },
+    }),
+    db.task.findMany({
+      where: {
+        userId,
+        status: 'DONE',
+        updatedAt: { gte: oneYearAgo },
+      },
+    }),
+    db.journalEntry.findMany({
+      where: {
+        userId,
+        date: { gte: oneYearAgo },
+      },
+    }),
+  ]);
 
-  // Fetch tasks completed in the past year
-  const completedTasksLogs = await db.task.findMany({
-    where: {
-      userId,
-      status: 'DONE',
-      updatedAt: { gte: oneYearAgo },
-    },
-  });
-
-  // Fetch journal entries in the past year
-  const journalLogs = await db.journalEntry.findMany({
-    where: {
-      userId,
-      date: { gte: oneYearAgo },
-    },
-  });
+  const focusMinutesToday = pomodoroSessions.reduce((acc, curr) => acc + curr.duration, 0);
+  const xpGainedToday = xpLogsToday.reduce((acc, curr) => acc + curr.amount, 0);
 
   // Compile overall activity counts grouped by date
   const activityMap: Record<string, number> = {};

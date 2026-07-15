@@ -12,14 +12,16 @@ export default async function DSAPage() {
 
   const userId = session.user.id;
 
-  const profile = await db.dSAProfile.findUnique({
-    where: { userId },
-  });
-
-  const submissions = await db.dSASubmission.findMany({
-    where: { userId },
-    orderBy: { date: 'desc' },
-  });
+  // Query DSA profile and submissions in parallel
+  const [profile, submissions] = await Promise.all([
+    db.dSAProfile.findUnique({
+      where: { userId },
+    }),
+    db.dSASubmission.findMany({
+      where: { userId },
+      orderBy: { date: 'desc' },
+    }),
+  ]);
 
   const serializedProfile = profile
     ? {

@@ -15,31 +15,31 @@ export default async function FocusPage() {
   const startOfToday = new Date();
   startOfToday.setHours(0,0,0,0);
 
-  // 1. Fetch Today's Sessions
-  const todaySessions = await db.pomodoroSession.findMany({
-    where: {
-      userId,
-      createdAt: {
-        gte: startOfToday,
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  // 2. Fetch Sessions from Past 7 Days
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   sevenDaysAgo.setHours(0,0,0,0);
 
-  const pastWeekSessions = await db.pomodoroSession.findMany({
-    where: {
-      userId,
-      createdAt: {
-        gte: sevenDaysAgo,
+  // Fetch today's and past week's sessions in parallel
+  const [todaySessions, pastWeekSessions] = await Promise.all([
+    db.pomodoroSession.findMany({
+      where: {
+        userId,
+        createdAt: {
+          gte: startOfToday,
+        },
       },
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+      orderBy: { createdAt: 'desc' },
+    }),
+    db.pomodoroSession.findMany({
+      where: {
+        userId,
+        createdAt: {
+          gte: sevenDaysAgo,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ]);
 
   const serializedToday = todaySessions.map((s) => ({
     id: s.id,

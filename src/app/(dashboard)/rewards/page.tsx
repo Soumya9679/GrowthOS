@@ -12,23 +12,23 @@ export default async function RewardsPage() {
 
   const userId = session.user.id;
 
-  const profile = await db.profile.findUnique({
-    where: { userId },
-  });
-
-  const preference = await db.userPreference.findUnique({
-    where: { userId },
-  });
-
-  // Query all badges, including current user's unlock relations
-  const badges = await db.badge.findMany({
-    include: {
-      users: {
-        where: { userId },
+  // Query profile, preferences, and badges in parallel
+  const [profile, preference, badges] = await Promise.all([
+    db.profile.findUnique({
+      where: { userId },
+    }),
+    db.userPreference.findUnique({
+      where: { userId },
+    }),
+    db.badge.findMany({
+      include: {
+        users: {
+          where: { userId },
+        },
       },
-    },
-    orderBy: { xpReward: 'asc' },
-  });
+      orderBy: { xpReward: 'asc' },
+    }),
+  ]);
 
   const serializedProfile = profile
     ? {

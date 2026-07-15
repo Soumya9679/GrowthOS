@@ -15,20 +15,21 @@ export default async function JournalPage() {
   today.setHours(0, 0, 0, 0);
 
   // Find today's entry
-  const todayEntry = await db.journalEntry.findUnique({
-    where: {
-      userId_date: {
-        userId,
-        date: today,
+  // Query today's journal entry and past entries in parallel
+  const [todayEntry, pastEntries] = await Promise.all([
+    db.journalEntry.findUnique({
+      where: {
+        userId_date: {
+          userId,
+          date: today,
+        },
       },
-    },
-  });
-
-  // Find all past entries
-  const pastEntries = await db.journalEntry.findMany({
-    where: { userId },
-    orderBy: { date: 'desc' },
-  });
+    }),
+    db.journalEntry.findMany({
+      where: { userId },
+      orderBy: { date: 'desc' },
+    }),
+  ]);
 
   const serializedTodayEntry = todayEntry
     ? {

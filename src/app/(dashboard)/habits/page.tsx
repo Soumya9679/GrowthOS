@@ -12,20 +12,21 @@ export default async function HabitsPage() {
 
   const userId = session.user.id;
 
-  // Query habits with historical check-in logs
-  const habits = await db.habit.findMany({
-    where: { userId },
-    include: {
-      logs: {
-        orderBy: { date: 'asc' },
+  // Query habits and profile in parallel
+  const [habits, profile] = await Promise.all([
+    db.habit.findMany({
+      where: { userId },
+      include: {
+        logs: {
+          orderBy: { date: 'asc' },
+        },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  const profile = await db.profile.findUnique({
-    where: { userId },
-  });
+      orderBy: { createdAt: 'desc' },
+    }),
+    db.profile.findUnique({
+      where: { userId },
+    }),
+  ]);
 
   // Prepare serializable shapes for props
   const serializedHabits = habits.map((h) => ({

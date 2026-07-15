@@ -45,29 +45,28 @@ export async function sendCoachMessage(formData: z.infer<typeof messageSchema>) 
       },
     });
 
-    // 3. Fetch User contexts to customize response
-    const profile = await db.profile.findUnique({ where: { userId } });
-    const habits = await db.habit.findMany({
-      where: { userId },
-      include: {
-        logs: {
-          where: { date: { gte: new Date(new Date().setHours(0,0,0,0)) } },
+    // 3. Fetch User contexts in parallel to customize response
+    const [profile, habits, activeGoals, dsaProblems, focusSessions] = await Promise.all([
+      db.profile.findUnique({ where: { userId } }),
+      db.habit.findMany({
+        where: { userId },
+        include: {
+          logs: {
+            where: { date: { gte: new Date(new Date().setHours(0,0,0,0)) } },
+          },
         },
-      },
-    });
-
-    const activeGoals = await db.goal.findMany({
-      where: { userId, status: 'ACTIVE' },
-      orderBy: { progress: 'asc' }, // find the one lagging
-    });
-
-    const dsaProblems = await db.dSASubmission.findMany({
-      where: { userId },
-    });
-
-    const focusSessions = await db.pomodoroSession.findMany({
-      where: { userId, createdAt: { gte: new Date(new Date().setHours(0,0,0,0)) } },
-    });
+      }),
+      db.goal.findMany({
+        where: { userId, status: 'ACTIVE' },
+        orderBy: { progress: 'asc' }, // find the one lagging
+      }),
+      db.dSASubmission.findMany({
+        where: { userId },
+      }),
+      db.pomodoroSession.findMany({
+        where: { userId, createdAt: { gte: new Date(new Date().setHours(0,0,0,0)) } },
+      }),
+    ]);
 
     // Compute stats summary tags for injection
     const habitsDone = habits.filter((h) => h.logs.length > 0).length;

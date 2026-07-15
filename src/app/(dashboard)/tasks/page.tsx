@@ -13,21 +13,23 @@ export default async function TasksPage() {
   const userId = session.user.id;
 
   // Fetch all tasks, nested subtasks, and linked projects
-  const tasks = await db.task.findMany({
-    where: { userId },
-    include: {
-      subtasks: {
-        orderBy: { createdAt: 'asc' },
+  // Query tasks and projects in parallel
+  const [tasks, projects] = await Promise.all([
+    db.task.findMany({
+      where: { userId },
+      include: {
+        subtasks: {
+          orderBy: { createdAt: 'asc' },
+        },
+        project: true,
       },
-      project: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  const projects = await db.project.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-  });
+      orderBy: { createdAt: 'desc' },
+    }),
+    db.project.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
 
   // Prepare safe serializable objects for props mapping
   const serializedTasks = tasks.map((t) => ({
