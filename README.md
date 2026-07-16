@@ -7,10 +7,10 @@ GrowthOS is a gamified, self-improvement productivity dashboard designed to opti
 ## 🌟 Key Features
 
 ### 1. 🧠 AI Growth Coach (RAG Pipeline)
-*   **LangChain LCEL**: Structured execution chains connecting prompts, OpenAI model integrations, and output parsers.
+*   **LangChain LCEL**: Structured execution chains connecting prompts, model integrations, and output parsers.
 *   **Pinecone Vector Database**: Persistent multi-tenant vector storage mapping user documents (notes and journals) with `userId` metadata filter queries.
-*   **Hugging Face Cloud Inference**: Direct REST-based embedding generation (`sentence-transformers/all-MiniLM-L6-v2`) without local PyTorch dependencies.
-*   **OpenRouter Integration**: Generates context-aware, personalized advice utilizing the meta-llama Llama-3.1 model.
+*   **Pinecone Managed Inference**: Bypasses Hugging Face API queries and local PyTorch dependencies by generating embeddings using Pinecone's serverless managed embedding service (`llama-text-embed-v2`, 384 dimensions) for rapid vector mapping.
+*   **OpenRouter Integration**: Generates context-aware, personalized coaching advice using **Google Gemini 2.5 Flash** to provide high-speed, intelligent responses under robust rate limits.
 
 ### 🔄 2. Real-Time Search Synchronization
 *   Next.js Server Actions automatically trigger background vector updates to `/api/index` and `/api/delete` in the Python microservice when you save journals, notes, or checklists.
@@ -21,6 +21,9 @@ GrowthOS is a gamified, self-improvement productivity dashboard designed to opti
 
 ### 🎮 4. Gamification Engine
 *   Includes daily habit trackers, OKR goal setting, a vertical vertical timeline planner with Glowing Clocks, Pomodoro focus timers, XP level-up thresholds, and Streak Freezes.
+
+### ⚡ 5. Dashboard Parallelization
+*   High-performance database query parallelization using Prisma and `Promise.all` across all dashboard sub-pages, layout, and the AI coach action, eliminating network waterfalls and ensuring sub-second response times.
 
 ---
 
@@ -46,7 +49,7 @@ NEXTAUTH_URL="http://localhost:3000"
 
 # External API Keys
 OPENROUTER_API_KEY="your_openrouter_api_key"
-HF_API_TOKEN="your_hugging_face_token"
+HF_API_TOKEN="your_hugging_face_token" # (Optional: Fallback only if Pinecone Inference key is not configured)
 
 # Pinecone Credentials
 PINECONE_API_KEY="your_pinecone_api_key"
