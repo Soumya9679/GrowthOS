@@ -22,7 +22,14 @@ GrowthOS is a gamified, self-improvement productivity dashboard designed to opti
 ### 🎮 4. Gamification Engine
 *   Includes daily habit trackers, OKR goal setting, a vertical vertical timeline planner with Glowing Clocks, Pomodoro focus timers, XP level-up thresholds, and Streak Freezes.
 
-### ⚡ 5. Dashboard Parallelization
+### 📚 5. Spaced Repetition Study Deck (SM-2 Algorithm)
+*   Create subject decks and study topics with custom flashcards.
+*   Self-assess your memory retention and schedule optimal review intervals powered by the **SuperMemo-2 (SM-2) algorithm**.
+
+### 🏆 6. Reward Shop & Customizations
+*   Spend accumulated XP in the shop to purchase custom titles (e.g., *Elite Scholar*, *Growth Architect*) or unlock personalized UI themes directly updating your user preferences.
+
+### ⚡ 7. Dashboard Parallelization
 *   High-performance database query parallelization using Prisma and `Promise.all` across all dashboard sub-pages, layout, and the AI coach action, eliminating network waterfalls and ensuring sub-second response times.
 
 ---
@@ -64,14 +71,40 @@ PYTHON_RAG_SERVICE_URL="http://127.0.0.1:8000"
 ## 🚀 Local Installation & Execution
 
 ### 1. Run the Next.js Frontend
-```bash
-# Install packages
-npm install
 
-# Run database setup
+First, install the package dependencies:
+```bash
+npm install
+```
+
+#### Database Provider Toggle
+GrowthOS supports switching the active database provider between SQLite (zero-setup local development) and PostgreSQL (production replication):
+```bash
+# To switch schema and provider to SQLite
+npm run db:sqlite
+
+# To switch schema and provider to PostgreSQL (Default)
+npm run db:postgres
+```
+
+#### Run Database Setup & Seeding
+If using PostgreSQL, spin up your local database container using Docker Compose:
+```bash
+# Spin up PostgreSQL and pgAdmin
+docker compose up -d
+```
+
+Initialize your database schema and seed mock application data:
+```bash
+# Synchronize Prisma schema
 npx prisma db push
 
-# Launch Next.js dev server
+# (Optional) Seed the database with mock tasks, habits, flashcards, etc.
+npx prisma db seed
+```
+
+#### Launch Next.js dev server
+```bash
 npm run dev
 ```
 
