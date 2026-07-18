@@ -137,4 +137,3 @@ docker run -d -p 8000:8000 --env-file ../.env --name growthos-ai-instance growth
 ### 2. Next.js Web App (Vercel)
 1. Create a new project on Vercel.
 2. Configure your environment variables, mapping `PYTHON_RAG_SERVICE_URL` to your deployed Render service endpoint.
-3. Deploy!
